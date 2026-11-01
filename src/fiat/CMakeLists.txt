@@ -52,6 +52,8 @@ ecbuild_list_add_pattern( LIST fiat_src GLOB
     oml/*.F*
     system/*.c system/*.F* system/*.cc
     util/*.c util/*.F*
+    mpl_handshake/*.F*
+    role_splitter/*.F*
     )
 
 if( HAVE_MPL_F77_DEPRECATED)

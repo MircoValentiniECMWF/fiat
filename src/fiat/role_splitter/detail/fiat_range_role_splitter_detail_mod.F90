@@ -1,0 +1,242 @@
+!> @file
+!!
+!! @brief Internal range-based role-splitter implementation.
+!!
+!! This detail module supports `FIAT_ROLE_SPLITTER_MOD`. Application code must
+!! use the public factory module rather than importing this module directly.
+!!
+
+MODULE FIAT_RANGE_ROLE_SPLITTER_DETAIL_MOD
+
+  ! Symbols imported from other modules within the project.
+  USE :: EC_PARKIND, ONLY: JPIM
+
+  ! Symbols imported from role-splitter detail modules.
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: MAX_ROLE_NAME_LEN
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: ROLE_SPLITTER_T
+
+IMPLICIT NONE
+
+  ! Default visibility
+  PRIVATE
+
+  ! Internal limits
+  INTEGER(KIND=JPIM), PARAMETER :: MAX_ROLE_COUNT = 256_JPIM
+
+  ! Range-based role-splitter implementation
+  TYPE, EXTENDS(ROLE_SPLITTER_T) :: RANGE_ROLE_SPLITTER_T
+    PRIVATE
+
+    ! Configured role names and inclusive rank ranges
+    CHARACTER(LEN=MAX_ROLE_NAME_LEN), ALLOCATABLE :: ROLE_NAMES_(:)
+    INTEGER(KIND=JPIM), ALLOCATABLE :: FIRST_RANKS_(:)
+    INTEGER(KIND=JPIM), ALLOCATABLE :: LAST_RANKS_(:)
+
+  CONTAINS
+
+    ! Role assignment and implementation-specific configuration
+    PROCEDURE :: ASSIGN => RANGE_ROLE_SPLITTER_ASSIGN
+    PROCEDURE :: READ_CONFIGURATION => RANGE_ROLE_SPLITTER_READ_CONFIGURATION
+
+  END TYPE RANGE_ROLE_SPLITTER_T
+
+  ! Symbol used only by the public factory
+  PUBLIC :: ALLOCATE_RANGE_ROLE_SPLITTER
+
+CONTAINS
+
+
+!> @brief Allocate a range-based role splitter.
+!!
+!! @param [out] SPLITTER Allocated range-based role splitter.
+!!
+SUBROUTINE ALLOCATE_RANGE_ROLE_SPLITTER(SPLITTER)
+
+  ! Symbols imported from role-splitter detail modules.
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: ROLE_SPLITTER_T
+
+IMPLICIT NONE
+
+  ! Dummy arguments
+  CLASS(ROLE_SPLITTER_T), POINTER, INTENT(OUT) :: SPLITTER
+
+  ! Allocate the concrete implementation
+  ALLOCATE(RANGE_ROLE_SPLITTER_T :: SPLITTER)
+
+END SUBROUTINE ALLOCATE_RANGE_ROLE_SPLITTER
+
+
+!> @brief Read the range-based role-splitter configuration.
+!!
+!! @param [in,out] SPLITTER Range splitter receiving the configured roles.
+!! @param [in]     KUNIT    Unit containing `NAM_RANGE_ROLE_SPLITTER`.
+!!
+SUBROUTINE RANGE_ROLE_SPLITTER_READ_CONFIGURATION(SPLITTER, KUNIT)
+
+  ! Symbols imported from other modules within the project.
+  USE :: EC_PARKIND, ONLY: JPIM
+  USE :: MPL_MODULE, ONLY: MPL_ABORT
+  USE :: NAMELIST_MOD, ONLY: POSNAME
+  USE :: YOMHOOK, ONLY: DR_HOOK
+  USE :: YOMHOOK, ONLY: JPHOOK
+  USE :: YOMHOOK, ONLY: LHOOK
+
+  ! Symbols imported from role-splitter detail modules.
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: MAX_ROLE_NAME_LEN
+
+IMPLICIT NONE
+
+  ! Dummy arguments
+  CLASS(RANGE_ROLE_SPLITTER_T), INTENT(INOUT) :: SPLITTER
+  INTEGER(KIND=JPIM), INTENT(IN) :: KUNIT
+
+  ! Local variables
+  CHARACTER(LEN=MAX_ROLE_NAME_LEN) :: ROLE_NAMES(MAX_ROLE_COUNT)
+  INTEGER(KIND=JPIM) :: ERROR
+  INTEGER(KIND=JPIM) :: FIRST_RANKS(MAX_ROLE_COUNT)
+  INTEGER(KIND=JPIM) :: LAST_RANKS(MAX_ROLE_COUNT)
+  INTEGER(KIND=JPIM) :: ROLE_COUNT
+  REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+  ! Namelist definition
+  NAMELIST / NAM_RANGE_ROLE_SPLITTER / ROLE_COUNT, ROLE_NAMES, FIRST_RANKS, LAST_RANKS
+
+  ! Trace begin of procedure
+  IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_READ_CONFIGURATION', 0_JPIM, ZHOOK_HANDLE)
+
+  ! Initialization of namelist values
+  ROLE_COUNT = -1_JPIM
+  ROLE_NAMES = ''
+  FIRST_RANKS = -1_JPIM
+  LAST_RANKS = -1_JPIM
+
+  ! Locate the range-splitter configuration
+  CALL POSNAME(KUNIT, 'NAM_RANGE_ROLE_SPLITTER', ERROR)
+  IF (ERROR /= 0_JPIM) THEN
+    IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_READ_CONFIGURATION', 1_JPIM, ZHOOK_HANDLE)
+    CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER: namelist is missing')
+  ENDIF
+
+  ! Read the configured roles and ranges
+  READ(KUNIT, NML=NAM_RANGE_ROLE_SPLITTER, IOSTAT=ERROR)
+  IF (ERROR /= 0_JPIM) THEN
+    IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_READ_CONFIGURATION', 1_JPIM, ZHOOK_HANDLE)
+    CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER: cannot read namelist')
+  ENDIF
+
+  ! Validate the number of configured roles
+  IF (ROLE_COUNT <= 0_JPIM .OR. ROLE_COUNT > MAX_ROLE_COUNT) THEN
+    IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_READ_CONFIGURATION', 1_JPIM, ZHOOK_HANDLE)
+    CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER: invalid ROLE_COUNT')
+  ENDIF
+
+  ! Store only the configured entries
+  ALLOCATE(SPLITTER%ROLE_NAMES_(ROLE_COUNT))
+  ALLOCATE(SPLITTER%FIRST_RANKS_(ROLE_COUNT))
+  ALLOCATE(SPLITTER%LAST_RANKS_(ROLE_COUNT))
+  SPLITTER%ROLE_NAMES_ = ROLE_NAMES(1_JPIM:ROLE_COUNT)
+  SPLITTER%FIRST_RANKS_ = FIRST_RANKS(1_JPIM:ROLE_COUNT)
+  SPLITTER%LAST_RANKS_ = LAST_RANKS(1_JPIM:ROLE_COUNT)
+
+  ! Trace end of procedure
+  IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_READ_CONFIGURATION', 1_JPIM, ZHOOK_HANDLE)
+
+END SUBROUTINE RANGE_ROLE_SPLITTER_READ_CONFIGURATION
+
+
+!> @brief Assign the calling rank to one configured role.
+!!
+!! Role names must be non-empty and unique. Inclusive zero-based rank ranges
+!! must be valid, disjoint, and contained in the supplied communicator.
+!!
+!! @param [in]  SPLITTER Configured range splitter.
+!! @param [in]  COMM     MPL communicator containing the rank.
+!! @param [out] ROLE     Role assigned to the calling rank.
+!!
+SUBROUTINE RANGE_ROLE_SPLITTER_ASSIGN(SPLITTER, COMM, ROLE)
+
+  ! Symbols imported from other modules within the project.
+  USE :: EC_PARKIND, ONLY: JPIM
+  USE :: MPL_MODULE, ONLY: MPL_ABORT
+  USE :: MPL_MODULE, ONLY: MPL_MYRANK
+  USE :: MPL_MODULE, ONLY: MPL_NPROC
+  USE :: YOMHOOK, ONLY: DR_HOOK
+  USE :: YOMHOOK, ONLY: JPHOOK
+  USE :: YOMHOOK, ONLY: LHOOK
+
+  ! Symbols imported from role-splitter detail modules.
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: ROLE_T
+  USE :: FIAT_ROLE_SPLITTER_DETAIL_MOD, ONLY: SET_ROLE_NAME
+
+IMPLICIT NONE
+
+  ! Dummy arguments
+  CLASS(RANGE_ROLE_SPLITTER_T), INTENT(IN) :: SPLITTER
+  INTEGER(KIND=JPIM), INTENT(IN) :: COMM
+  TYPE(ROLE_T), INTENT(OUT) :: ROLE
+
+  ! Local variables
+  INTEGER(KIND=JPIM) :: I
+  INTEGER(KIND=JPIM) :: J
+  INTEGER(KIND=JPIM) :: MATCH_COUNT
+  INTEGER(KIND=JPIM) :: NUM_PROCS
+  INTEGER(KIND=JPIM) :: RANK
+  REAL(KIND=JPHOOK) :: ZHOOK_HANDLE
+
+  ! Trace begin of procedure
+  IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 0_JPIM, ZHOOK_HANDLE)
+
+  ! Validate role names and inclusive rank ranges
+  NUM_PROCS = MPL_NPROC(COMM)
+  DO I = 1_JPIM, SIZE(SPLITTER%ROLE_NAMES_, KIND=JPIM)
+    IF (LEN_TRIM(SPLITTER%ROLE_NAMES_(I), KIND=JPIM) == 0_JPIM) THEN
+      IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+      CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: role name is empty')
+    ENDIF
+    IF (SPLITTER%FIRST_RANKS_(I) < 0_JPIM) THEN
+      IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+      CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: first rank is negative')
+    ENDIF
+    IF (SPLITTER%LAST_RANKS_(I) < SPLITTER%FIRST_RANKS_(I)) THEN
+      IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+      CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: invalid rank range')
+    ENDIF
+    IF (SPLITTER%LAST_RANKS_(I) >= NUM_PROCS) THEN
+      IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+      CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: rank range exceeds communicator')
+    ENDIF
+    DO J = I + 1_JPIM, SIZE(SPLITTER%ROLE_NAMES_, KIND=JPIM)
+      IF (TRIM(SPLITTER%ROLE_NAMES_(I)) == TRIM(SPLITTER%ROLE_NAMES_(J))) THEN
+        IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+        CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: duplicate role name')
+      ENDIF
+      IF (SPLITTER%FIRST_RANKS_(I) <= SPLITTER%LAST_RANKS_(J) .AND. &
+          SPLITTER%FIRST_RANKS_(J) <= SPLITTER%LAST_RANKS_(I)) THEN
+        IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+        CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: overlapping role ranges')
+      ENDIF
+    ENDDO
+  ENDDO
+
+  ! Convert the MPL rank to zero-based indexing and find its role
+  RANK = MPL_MYRANK(COMM) - 1_JPIM
+  MATCH_COUNT = 0_JPIM
+  DO I = 1_JPIM, SIZE(SPLITTER%ROLE_NAMES_, KIND=JPIM)
+    IF (RANK >= SPLITTER%FIRST_RANKS_(I) .AND. RANK <= SPLITTER%LAST_RANKS_(I)) THEN
+      CALL SET_ROLE_NAME(ROLE, SPLITTER%ROLE_NAMES_(I))
+      MATCH_COUNT = MATCH_COUNT + 1_JPIM
+    ENDIF
+  ENDDO
+
+  ! Ensure that the rank belongs to exactly one role
+  IF (MATCH_COUNT /= 1_JPIM) THEN
+    IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+    CALL MPL_ABORT('FIAT:RANGE_ROLE_SPLITTER_ASSIGN: rank is not assigned exactly one role')
+  ENDIF
+
+  ! Trace end of procedure
+  IF (LHOOK) CALL DR_HOOK('FIAT:RANGE_ROLE_SPLITTER_ASSIGN', 1_JPIM, ZHOOK_HANDLE)
+
+END SUBROUTINE RANGE_ROLE_SPLITTER_ASSIGN
+
+END MODULE FIAT_RANGE_ROLE_SPLITTER_DETAIL_MOD
