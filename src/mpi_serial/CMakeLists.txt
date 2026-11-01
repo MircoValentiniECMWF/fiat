@@ -75,6 +75,7 @@ ecbuild_add_library( TARGET mpi_serial
             mpi_iscatterv.F
             mpi_isend.F
             mpi_probe.F
+            mpi_query_thread.F
             mpi_recv.F
             mpi_recv_f08ts.F
             mpi_scatterv.F
